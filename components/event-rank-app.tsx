@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { SessionProvider, signIn, signOut, useSession } from "next-auth/react";
 import { eventCatalog, getRelatedEvents, searchEvents } from "@/lib/events";
 import { buildIcsCalendar, downloadIcs } from "@/lib/ics";
@@ -441,12 +442,30 @@ function MetaItem({ icon, children }: { icon: string; children: ReactNode }) {
   );
 }
 
+function EventVisual({ event, featured = false }: { event: EventRecord; featured?: boolean }) {
+  const category = asText(event.category, "Campus event");
+  const title = asText(event.title, "Campus event");
+  const visualLabel = `${category} visual for ${title}`;
+  const initial = title.trim().charAt(0).toUpperCase() || "E";
+
+  return (
+    <div className={`event-visual ${categoryClass(category)} ${featured ? "event-visual-featured" : ""}`} role="img" aria-label={visualLabel}>
+      <span className="event-visual-grid" aria-hidden="true" />
+      <span className="event-visual-orb event-visual-orb-one" aria-hidden="true" />
+      <span className="event-visual-orb event-visual-orb-two" aria-hidden="true" />
+      <span className="event-visual-initial" aria-hidden="true">{initial}</span>
+      <span className="event-visual-caption" aria-hidden="true">{category}</span>
+    </div>
+  );
+}
+
 function EventCard({
   event,
   saved,
   compared,
   featured = false,
   list = false,
+  compact = false,
   onOpen,
   onSave,
   onCompare,
@@ -456,6 +475,7 @@ function EventCard({
   compared: boolean;
   featured?: boolean;
   list?: boolean;
+  compact?: boolean;
   onOpen: () => void;
   onSave: () => void;
   onCompare: () => void;
@@ -472,61 +492,123 @@ function EventCard({
     cardStatus === "completed" ? "Completed" : null;
 
   return (
-    <article className={`event-card ${featured ? "event-card-featured" : ""} ${list ? "event-card-list" : ""}`}>
-      <div className="event-card-topline">
-        <div className="event-card-labels">
-          <span className={`category-pill ${categoryClass(category)}`}>{category}</span>
-          {cardStatusLabel ? <span className={`status-pill status-${cardStatus}`}>{cardStatusLabel}</span> : null}
-          {!cardStatusLabel && event.featured ? <span className="featured-label"><Icon name="sparkle" size={12} /> Curated pick</span> : null}
+    <article className={`event-card ${featured ? "event-card-featured" : ""} ${list ? "event-card-list" : ""} ${compact ? "event-card-compact" : ""}`}>
+      <div className="event-card-visual-wrap">
+        <EventVisual event={event} featured={featured} />
+        <div className="event-visual-shade" aria-hidden="true" />
+        <div className="event-card-topline">
+          <div className="event-card-labels">
+            <span className={`category-pill ${categoryClass(category)}`}>{category}</span>
+            {cardStatusLabel ? <span className={`status-pill status-${cardStatus}`}>{cardStatusLabel}</span> : null}
+            {!cardStatusLabel && event.featured ? <span className="featured-label"><Icon name="sparkle" size={12} /> Curated pick</span> : null}
+          </div>
+          <button
+            type="button"
+            className={`icon-button save-button ${saved ? "is-saved" : ""}`}
+            aria-label={saved ? `Remove ${asText(event.title)} from saved events` : `Save ${asText(event.title)}`}
+            aria-pressed={saved}
+            onClick={onSave}
+          >
+            <Icon name={saved ? "bookmark-filled" : "bookmark"} size={18} />
+          </button>
         </div>
-        <button
-          type="button"
-          className={`icon-button save-button ${saved ? "is-saved" : ""}`}
-          aria-label={saved ? `Remove ${asText(event.title)} from saved events` : `Save ${asText(event.title)}`}
-          aria-pressed={saved}
-          onClick={onSave}
-        >
-          <Icon name={saved ? "bookmark-filled" : "bookmark"} size={18} />
-        </button>
       </div>
 
-      <button className="event-card-main" type="button" onClick={onOpen}>
-        <div className="event-card-heading">
-          <h3>{asText(event.title, "Untitled campus event")}</h3>
-          <span className="open-arrow" aria-hidden="true"><Icon name="arrow-up-right" size={16} /></span>
-        </div>
-        <p className="event-summary">{asText(event.summary, asText(event.description, "A campus experience worth making time for."))}</p>
-        <div className="event-meta-grid">
-          <MetaItem icon="calendar">{dateLabel}</MetaItem>
-          <MetaItem icon="clock">{timeLabel}</MetaItem>
-          <MetaItem icon="pin">{asText(event.location, "Northbridge campus")}</MetaItem>
-          <MetaItem icon="user">{asText(event.organizer, "Campus community")}</MetaItem>
-        </div>
-        <div className="event-card-bottom">
-          <div className="reason-row">
-            {reasons.map((reason) => <span className="reason-chip" key={reason}><Icon name="check" size={12} />{reason}</span>)}
-            {!reasons.length && tags.map((tag) => <span className="reason-chip" key={tag}>{tag}</span>)}
+      <div className="event-card-content">
+        <button className="event-card-main" type="button" onClick={onOpen}>
+          <div className="event-card-heading">
+            <h3>{asText(event.title, "Untitled campus event")}</h3>
+            <span className="open-arrow" aria-hidden="true"><Icon name="arrow-up-right" size={16} /></span>
           </div>
-          <div className="event-score-mini">
-            <span className="score-number">{scoreOf(event)}</span>
-            <span className="score-copy">EventRank</span>
+          <p className="event-summary">{asText(event.summary, asText(event.description, "A campus experience worth making time for."))}</p>
+          <div className="event-meta-grid">
+            <MetaItem icon="calendar">{dateLabel}</MetaItem>
+            <MetaItem icon="clock">{timeLabel}</MetaItem>
+            <MetaItem icon="pin">{asText(event.location, "Northbridge campus")}</MetaItem>
+            <MetaItem icon="user">{asText(event.organizer, "Campus community")}</MetaItem>
           </div>
-        </div>
-      </button>
-
-      <div className="event-card-footer">
-        <span className="price-label">{asText(event.priceLabel, "See details")}</span>
-        <button
-          type="button"
-          className={`compare-button ${compared ? "is-compared" : ""}`}
-          aria-pressed={compared}
-          onClick={onCompare}
-        >
-          <Icon name={compared ? "check" : "compare"} size={14} />
-          {compared ? "Added to compare" : "Compare"}
+          <div className="event-card-bottom">
+            <div className="reason-row">
+              {reasons.map((reason) => <span className="reason-chip" key={reason}><Icon name="check" size={12} />{reason}</span>)}
+              {!reasons.length && tags.map((tag) => <span className="reason-chip" key={tag}>{tag}</span>)}
+            </div>
+            <div className="event-score-mini" aria-label={`EventRank score ${scoreOf(event)} out of 100`}>
+              <span className="score-number">{scoreOf(event)}</span>
+              <span className="score-copy">EventRank</span>
+            </div>
+          </div>
         </button>
+
+        <div className="event-card-footer">
+          <span className="event-card-pricing"><span className="price-label">{asText(event.priceLabel, "See details")}</span><span className="capacity-label">{asText(event.capacityStatus, "Open capacity")}</span></span>
+          <button
+            type="button"
+            className={`compare-button ${compared ? "is-compared" : ""}`}
+            aria-pressed={compared}
+            onClick={onCompare}
+          >
+            <Icon name={compared ? "check" : "compare"} size={14} />
+            {compared ? "Added to compare" : "Compare"}
+          </button>
+        </div>
       </div>
     </article>
+  );
+}
+
+function EventRail({
+  eyebrow,
+  title,
+  subtitle,
+  events,
+  savedIds,
+  compareIds,
+  onOpen,
+  onSave,
+  onCompare,
+  onSeeAll,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  events: EventRecord[];
+  savedIds: Set<string>;
+  compareIds: string[];
+  onOpen: (event: EventRecord) => void;
+  onSave: (event: EventRecord) => void;
+  onCompare: (event: EventRecord) => void;
+  onSeeAll: () => void;
+}) {
+  if (!events.length) return null;
+
+  return (
+    <section className="event-rail" aria-labelledby={`rail-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>
+      <div className="event-rail-heading">
+        <div>
+          <p className="section-kicker">{eyebrow}</p>
+          <h2 id={`rail-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{title}</h2>
+          <p>{subtitle}</p>
+        </div>
+        <button type="button" className="rail-link" onClick={onSeeAll}>See all <Icon name="arrow-right" size={15} /></button>
+      </div>
+      <div className="event-rail-track" tabIndex={0} aria-label={`${title} events`}>
+        {events.slice(0, 6).map((event) => {
+          const id = String(event.id);
+          return (
+            <EventCard
+              key={id}
+              event={event}
+              saved={savedIds.has(id)}
+              compared={compareIds.includes(id)}
+              compact
+              onOpen={() => onOpen(event)}
+              onSave={() => onSave(event)}
+              onCompare={() => onCompare(event)}
+            />
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -731,6 +813,7 @@ function EventDetail({
         </button>
       </div>
       <div className="detail-scroll">
+        <div className="detail-visual"><EventVisual event={event} featured /><div className="detail-visual-label"><span className="category-pill">{asText(event.category, "Campus event")}</span><span><Icon name="sparkle" size={13} /> EventRank context</span></div></div>
         <div className="detail-heading-row">
           <div>
             <p className="eyebrow eyebrow-small"><span className="eyebrow-dot" /> {event.featured ? "EDITOR'S PICK" : "CAMPUS EVENT"}</p>
@@ -987,6 +1070,7 @@ function CompareDialog({ events, onClose, onRemove, onToast }: { events: EventRe
 }
 
 function EventRankAppInner() {
+  const router = useRouter();
   const { data: session, status } = useSession();
   // Whether an OAuth provider is registered server-side, detected via the
   // built-in providers endpoint ({} when unconfigured). null while checking.
@@ -1001,7 +1085,7 @@ function EventRankAppInner() {
   const [preferenceSettings, setPreferenceSettings] = useState<PreferenceSettings>(defaultPreferenceSettings);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All events");
-  const [activeView, setActiveView] = useState<"discover" | "saved">("discover");
+  const [activeView, setActiveView] = useState<"discover" | "explore" | "saved" | "rsvps">("discover");
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({ format: "Any format", price: "Any price", date: "Any day" });
   const [sort, setSort] = useState("Recommended");
@@ -1109,6 +1193,27 @@ function EventRankAppInner() {
   }, [hydrated, preferences, preferenceSettings]);
 
   useEffect(() => {
+    if (!hydrated) return;
+    let cancelled = false;
+    fetch("/api/me/saved")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload: unknown) => {
+        if (cancelled || !payload || typeof payload !== "object") return;
+        const record = payload as { savedEventIds?: unknown; registeredEventIds?: unknown };
+        const remoteSaved = Array.isArray(record.savedEventIds) ? record.savedEventIds.map(String) : [];
+        const remoteRegistered = Array.isArray(record.registeredEventIds) ? record.registeredEventIds.map(String) : [];
+        if (remoteSaved.length) setSavedIds((current) => new Set([...current, ...remoteSaved]));
+        if (remoteRegistered.length) setRegisteredIds((current) => new Set([...current, ...remoteRegistered]));
+      })
+      .catch(() => {
+        // Demo/local state remains the fallback when the API is unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated]);
+
+  useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 3000);
     return () => window.clearTimeout(timer);
@@ -1162,6 +1267,7 @@ function EventRankAppInner() {
       interests: preferences,
       events: catalog.filter((event) => {
         if (activeView === "saved" && !savedIds.has(String(event.id))) return false;
+        if (activeView === "rsvps" && !registeredIds.has(String(event.id))) return false;
         if (normalizedQuery && !eventText(event).includes(normalizedQuery)) return false;
         if (filters.format !== "Any format" && normalizedFormat(event.format) !== normalizedFormat(filters.format)) return false;
         if (filters.price === "Free" && !isFree(event)) return false;
@@ -1180,7 +1286,7 @@ function EventRankAppInner() {
       if (sort === "Most reviewed") return Number(second.reviewCount || 0) - Number(first.reviewCount || 0);
       return scoreOf(second) - scoreOf(first);
     });
-  }, [activeCategory, activeView, filters, preferences, preferenceSettings, query, savedIds, sort]);
+  }, [activeCategory, activeView, filters, preferences, preferenceSettings, query, registeredIds, savedIds, sort]);
 
   const selectedEvent = selectedEventId ? catalog.find((event) => String(event.id) === selectedEventId) : undefined;
   const reviewEvent = reviewEventId ? catalog.find((event) => String(event.id) === reviewEventId) : undefined;
@@ -1204,14 +1310,30 @@ function EventRankAppInner() {
   const featuredEvent = visibleEvents.find((event) => event.featured) || visibleEvents[0];
   const filterCount = [filters.format !== "Any format", filters.price !== "Any price", filters.date !== "Any day"].filter(Boolean).length;
   const savedCount = savedIds.size;
+  const registeredCount = registeredIds.size;
+  const homeRailEvents = useMemo(() => {
+    const available = visibleEvents.filter((event) => {
+      const state = asText((event as { status?: unknown }).status, "published").toLowerCase();
+      return state !== "canceled" && state !== "archived" && !isPast(event);
+    });
+    const unique = (events: EventRecord[]) => [...new Map(events.map((event) => [String(event.id), event])).values()];
+    return {
+      picked: unique(available),
+      today: unique(available.filter(startsToday)),
+      week: unique(available.filter(startsThisWeek)),
+      free: unique(available.filter(isFree)),
+    };
+  }, [visibleEvents]);
+  const showHomeRails = activeView === "discover" && !query.trim() && activeCategory === "All events" && filterCount === 0;
 
   const showToast = (message: string) => setToast(message);
 
   const toggleSaved = (event: EventRecord) => {
     const id = String(event.id);
+    const nextSaved = !savedIds.has(id);
     setSavedIds((current) => {
       const next = new Set(current);
-      if (next.has(id)) {
+      if (!nextSaved) {
         next.delete(id);
         showToast("Removed from saved events");
       } else {
@@ -1219,6 +1341,19 @@ function EventRankAppInner() {
         showToast("Saved to your events");
       }
       return next;
+    });
+    void fetch(`/api/events/${encodeURIComponent(id)}/save`, { method: nextSaved ? "POST" : "DELETE" }).then((response) => {
+      if (!response.ok && oauthReady === true) {
+        setSavedIds((current) => {
+          const reverted = new Set(current);
+          if (nextSaved) reverted.delete(id);
+          else reverted.add(id);
+          return reverted;
+        });
+        showToast("Could not sync that save — try again");
+      }
+    }).catch(() => {
+      // Keep local state for offline/demo use.
     });
   };
 
@@ -1269,18 +1404,42 @@ function EventRankAppInner() {
     }
   };
 
+  const navigateTo = (view: "discover" | "explore" | "saved" | "rsvps") => {
+    setActiveView(view);
+    if (view === "discover") {
+      setActiveCategory("All events");
+      setQuery("");
+      setFilters({ format: "Any format", price: "Any price", date: "Any day" });
+    }
+    setMobileMenuOpen(false);
+  };
+
+  const openEvent = (event: EventRecord) => {
+    router.push(`/events/${encodeURIComponent(String(event.id))}`);
+  };
+
+  const resetDiscovery = () => {
+    setActiveView("discover");
+    setActiveCategory("All events");
+    setQuery("");
+    setFilters({ format: "Any format", price: "Any price", date: "Any day" });
+  };
+
   return (
     <main className="eventrank-app">
       <header className="topbar">
         <div className="topbar-inner">
-          <button type="button" className="brand-lockup" onClick={() => { setActiveView("discover"); setActiveCategory("All events"); setQuery(""); }} aria-label="EventRank home">
+          <button type="button" className="brand-lockup" onClick={resetDiscovery} aria-label="EventRank home">
             <LogoMark /><span className="brand-name">Event<span>Rank</span></span>
           </button>
           <nav className="top-nav" aria-label="Main navigation">
-            <button type="button" className={activeView === "discover" ? "nav-link active" : "nav-link"} onClick={() => setActiveView("discover")}>Discover</button>
-            <button type="button" className={activeView === "saved" ? "nav-link active" : "nav-link"} onClick={() => setActiveView("saved")}>Saved <span className="nav-count">{savedCount}</span></button>
+            <button type="button" className={activeView === "discover" ? "nav-link active" : "nav-link"} onClick={() => navigateTo("discover")}>For You</button>
+            <button type="button" className={activeView === "explore" ? "nav-link active" : "nav-link"} onClick={() => navigateTo("explore")}>Explore</button>
+            <button type="button" className={activeView === "saved" ? "nav-link active" : "nav-link"} onClick={() => navigateTo("saved")}>Saved <span className="nav-count">{savedCount}</span></button>
+            <button type="button" className={activeView === "rsvps" ? "nav-link active" : "nav-link"} onClick={() => navigateTo("rsvps")}>My RSVPs <span className="nav-count">{registeredCount}</span></button>
           </nav>
           <div className="topbar-actions">
+            <div className="campus-pill"><span className="campus-pill-dot" /> Northbridge University <span className="campus-pill-muted">· Main Campus</span></div>
             <button type="button" className="preference-nav-button" onClick={() => setPreferencesOpen(true)}><Icon name="sparkle" size={16} /><span>Preferences</span></button>
             <span className="topbar-divider" />
             <button type="button" className="profile-button" onClick={() => setPreferencesOpen(true)} aria-label={isRealSession ? `Signed in as ${identity.name} — open profile preferences` : showDemoIdentity ? "Demo profile — open profile preferences" : "Sign in — open profile preferences"}><span className="avatar">{identity.initials}</span><span className="profile-copy"><strong>{identity.name}</strong><small>{identity.roleLabel}</small></span><Icon name="chevron-down" size={15} /></button>
@@ -1288,31 +1447,36 @@ function EventRankAppInner() {
           </div>
           <button type="button" className="mobile-menu-button" aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen((value) => !value)}><Icon name={mobileMenuOpen ? "x" : "menu"} size={21} /></button>
         </div>
-        {mobileMenuOpen ? <div className="mobile-nav-panel"><button type="button" className={activeView === "discover" ? "active" : ""} onClick={() => { setActiveView("discover"); setMobileMenuOpen(false); }}>Discover</button><button type="button" className={activeView === "saved" ? "active" : ""} onClick={() => { setActiveView("saved"); setMobileMenuOpen(false); }}>Saved <span>{savedCount}</span></button><button type="button" onClick={() => { setPreferencesOpen(true); setMobileMenuOpen(false); }}><Icon name="sparkle" size={15} /> Preferences</button>{sessionLoading ? null : isRealSession ? <button type="button" onClick={() => { setMobileMenuOpen(false); signOut({ callbackUrl: "/" }); }}>Sign out ({identity.name})</button> : oauthReady ? <button type="button" onClick={() => { setMobileMenuOpen(false); signIn("google", { callbackUrl: "/" }); }}>Sign in with Google</button> : <button type="button" disabled aria-label="Demo mode profile">Demo — {identity.name}</button>}</div> : null}
+        {mobileMenuOpen ? <div className="mobile-nav-panel"><button type="button" className={activeView === "discover" ? "active" : ""} onClick={() => navigateTo("discover")}>For You</button><button type="button" className={activeView === "explore" ? "active" : ""} onClick={() => navigateTo("explore")}>Explore</button><button type="button" className={activeView === "saved" ? "active" : ""} onClick={() => navigateTo("saved")}>Saved <span>{savedCount}</span></button><button type="button" className={activeView === "rsvps" ? "active" : ""} onClick={() => navigateTo("rsvps")}>My RSVPs <span>{registeredCount}</span></button><button type="button" onClick={() => { setPreferencesOpen(true); setMobileMenuOpen(false); }}><Icon name="sparkle" size={15} /> Preferences</button>{sessionLoading ? null : isRealSession ? <button type="button" onClick={() => { setMobileMenuOpen(false); signOut({ callbackUrl: "/" }); }}>Sign out ({identity.name})</button> : oauthReady ? <button type="button" onClick={() => { setMobileMenuOpen(false); signIn("google", { callbackUrl: "/" }); }}>Sign in with Google</button> : <button type="button" disabled aria-label="Demo mode profile">Demo — {identity.name}</button>}</div> : null}
       </header>
 
       <div className="page-shell">
         <section className="hero-section" aria-labelledby="welcome-title">
           <div className="hero-copy">
-            <p className="eyebrow"><span className="eyebrow-dot pulse" /> NORTHBRIDGE UNIVERSITY <span className="eyebrow-separator">/</span> SPRING 2026</p>
-            <h1 id="welcome-title">Find the moments<br /><em>that move you forward.</em></h1>
-            <p className="hero-description">One calm place to discover what’s happening on campus — and decide what’s worth your time.</p>
-            <form className="global-search" onSubmit={(event) => { event.preventDefault(); setActiveView("discover"); showToast(query ? `Showing results for “${query}”` : "Try a search to shape your feed"); }}>
+            <div className="campus-context"><span className="eyebrow-dot pulse" /> <strong>Northbridge University</strong><span>· Main Campus</span><span className="campus-context-status">Live campus feed</span></div>
+            <p className="eyebrow">YOUR CAMPUS, IN CONTEXT <span className="eyebrow-separator">/</span> OCTOBER 2026</p>
+            <h1 id="welcome-title">Find what’s worth<br /><em>your time.</em></h1>
+            <p className="hero-description">A calm, intelligent campus district for discovering events, understanding the fit, and choosing with confidence.</p>
+            <form className="global-search" onSubmit={(event) => { event.preventDefault(); setActiveView("explore"); showToast(query ? `Showing results for “${query}”` : "Try a search to shape your feed"); }}>
               <Icon name="search" size={20} />
-              <input aria-label="Search campus events" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events, interests, or goals..." />
+              <input aria-label="Search campus events, interests, or goals" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events, interests, or goals…" />
               <kbd>⌘ K</kbd>
-              <button type="submit" aria-label="Submit event search"><Icon name="arrow-right" size={18} /></button>
+              <button type="submit" aria-label="Search events"><Icon name="arrow-right" size={18} /></button>
             </form>
-            <div className="search-examples"><span>Try</span><button type="button" onClick={() => setQuery("hands-on AI workshop")}>“hands-on AI workshop”</button><button type="button" onClick={() => setQuery("free events this weekend")}>“free events this weekend”</button></div>
+            <div className="search-examples"><span>Try</span><button type="button" onClick={() => { setQuery("hands-on AI workshop"); setActiveView("explore"); }}>“hands-on AI workshop”</button><button type="button" onClick={() => { setQuery("free events this weekend"); setActiveView("explore"); }}>“free this weekend”</button></div>
           </div>
-          <div className="hero-insight-card">
-            <div className="insight-card-glow" />
-            <div className="insight-card-top"><span className="insight-label"><Icon name="sparkle" size={14} /> YOUR EVENTRANK</span><span className="insight-period">THIS WEEK</span></div>
-            <div className="insight-score-row"><div className="insight-score">92<span>/100</span></div><span className="insight-trend"><Icon name="arrow-up-right" size={14} /> +8%<small>from last week</small></span></div>
-            <p className="insight-copy">Your feed is tuned to <strong>{preferences.slice(0, 2).join(" + ") || "your interests"}</strong> and events that fit your schedule.</p>
-            <div className="insight-bars"><span style={{ width: "88%" }} /><span style={{ width: "72%" }} /><span style={{ width: "94%" }} /></div>
-            <div className="insight-foot"><span><i className="legend-dot lime" /> Relevance</span><span><i className="legend-dot blue" /> Practical fit</span><span><i className="legend-dot violet" /> Trust</span></div>
-          </div>
+          {featuredEvent ? <article className="hero-event-card">
+            <EventVisual event={featuredEvent} featured />
+            <div className="hero-event-overlay" />
+            <div className="hero-event-topline"><span className="hero-featured-label"><Icon name="sparkle" size={14} /> PICKED FOR YOU</span><span className="hero-score"><strong>{scoreOf(featuredEvent)}</strong><span>/100 EventRank</span></span></div>
+            <div className="hero-event-content">
+              <span className={`category-pill ${categoryClass(asText(featuredEvent.category, "Campus event"))}`}>{asText(featuredEvent.category, "Campus event")}</span>
+              <h2>{asText(featuredEvent.title, "A campus event worth your time")}</h2>
+              <p>{asText(featuredEvent.summary, "A thoughtful campus experience with the details ready to plan around.")}</p>
+              <div className="hero-event-meta"><MetaItem icon="calendar">{asText(featuredEvent.dateLabel, formatFallbackDate(featuredEvent))}</MetaItem><MetaItem icon="pin">{asText(featuredEvent.location, "Northbridge campus")}</MetaItem></div>
+              <div className="hero-event-bottom"><span className="hero-reason"><Icon name="check" size={13} /> {listOf(featuredEvent.scoreReasons)[0] || "Strong fit for your interests"}</span><button type="button" className="hero-event-cta" onClick={() => setSelectedEventId(String(featuredEvent.id))}>View event <Icon name="arrow-up-right" size={16} /></button></div>
+            </div>
+          </article> : <div className="hero-event-empty"><Icon name="sparkle" size={24} /><strong>Good things are loading in.</strong><span>Browse Explore to see the full campus calendar.</span></div>}
         </section>
 
         <section className="personalize-strip" aria-label="Personalize your recommendations">
@@ -1322,9 +1486,16 @@ function EventRankAppInner() {
           <button type="button" className="text-action" onClick={() => setPreferencesOpen(true)}>Edit preferences <Icon name="arrow-right" size={15} /></button>
         </section>
 
+        {showHomeRails ? <div className="home-rails">
+          <EventRail eyebrow="YOUR SIGNALS" title="Picked for you" subtitle="High-fit ideas based on what you care about." events={homeRailEvents.picked} savedIds={savedIds} compareIds={compareIds} onOpen={openEvent} onSave={toggleSaved} onCompare={toggleCompared} onSeeAll={() => navigateTo("explore")} />
+          <EventRail eyebrow="RIGHT NOW" title="Happening today" subtitle="Make a little room for what is already in motion." events={homeRailEvents.today} savedIds={savedIds} compareIds={compareIds} onOpen={openEvent} onSave={toggleSaved} onCompare={toggleCompared} onSeeAll={() => { setActiveView("explore"); setFilters((current) => ({ ...current, date: "Today" })); }} />
+          <EventRail eyebrow="ON THE HORIZON" title="This week on campus" subtitle="A balanced shortlist for the days ahead." events={homeRailEvents.week} savedIds={savedIds} compareIds={compareIds} onOpen={openEvent} onSave={toggleSaved} onCompare={toggleCompared} onSeeAll={() => { setActiveView("explore"); setFilters((current) => ({ ...current, date: "This week" })); }} />
+          <EventRail eyebrow="LOW-LIFT PICKS" title="Free to attend" subtitle="Good experiences that leave room in your budget." events={homeRailEvents.free} savedIds={savedIds} compareIds={compareIds} onOpen={openEvent} onSave={toggleSaved} onCompare={toggleCompared} onSeeAll={() => { setActiveView("explore"); setFilters((current) => ({ ...current, price: "Free" })); }} />
+        </div> : null}
+
         <section className="discovery-section" aria-labelledby="discovery-heading">
           <div className="section-heading-row">
-            <div><p className="section-kicker">{activeView === "saved" ? "YOUR SHORTLIST" : "DISCOVER"}</p><h2 id="discovery-heading">{activeView === "saved" ? "Events you want to remember" : "A better way to spend your time"}</h2><p className="section-subtitle">{activeView === "saved" ? `${savedCount} event${savedCount === 1 ? "" : "s"} saved for later.` : "Personalized picks, fresh ideas, and the details that help you choose."}</p></div>
+            <div><p className="section-kicker">{activeView === "saved" ? "YOUR SHORTLIST" : activeView === "rsvps" ? "YOUR PLAN" : activeView === "explore" ? "EXPLORE" : "ALL CAMPUS EVENTS"}</p><h2 id="discovery-heading">{activeView === "saved" ? "Events you want to remember" : activeView === "rsvps" ? "My upcoming RSVPs" : activeView === "explore" ? "Explore the full campus calendar" : "Keep exploring"}</h2><p className="section-subtitle">{activeView === "saved" ? `${savedCount} event${savedCount === 1 ? "" : "s"} saved for later.` : activeView === "rsvps" ? `${registeredCount} event${registeredCount === 1 ? "" : "s"} in your upcoming plan.` : "Search intentionally or browse every event with the context to choose well."}</p></div>
             <div className="section-actions">{activeView === "saved" && visibleEvents.length ? <button type="button" className="control-button" onClick={() => { downloadIcs("eventrank-saved.ics", buildIcsCalendar(visibleEvents.map(toIcsInput))); showToast("Saved events exported to calendar"); }}><Icon name="calendar" size={16} /> Export .ics</button> : null}<button type="button" className={`control-button ${showFilters ? "is-active" : ""}`} onClick={() => setShowFilters((value) => !value)}><Icon name="sliders" size={16} /> Filters {filterCount ? <span className="control-count">{filterCount}</span> : null}</button><label className="sort-control"><span>Sort by</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option>Recommended</option><option>Soonest</option><option>Highest rated</option><option>Most reviewed</option></select><Icon name="chevron-down" size={14} /></label><div className="view-toggle" aria-label="Change event layout"><button type="button" className={viewMode === "grid" ? "selected" : ""} onClick={() => setViewMode("grid")} aria-label="Grid view"><Icon name="grid" size={16} /></button><button type="button" className={viewMode === "list" ? "selected" : ""} onClick={() => setViewMode("list")} aria-label="List view"><Icon name="list" size={16} /></button></div></div>
           </div>
 
@@ -1334,11 +1505,19 @@ function EventRankAppInner() {
 
           <div className="results-meta"><span>{loading ? "Finding your next event…" : <><strong>{visibleEvents.length}</strong> event{visibleEvents.length === 1 ? "" : "s"} {query ? `matching “${query}”` : "worth a look"}</>}</span>{query || activeCategory !== "All events" || filterCount ? <button type="button" onClick={() => { setQuery(""); setActiveCategory("All events"); setFilters({ format: "Any format", price: "Any price", date: "Any day" }); }}>Reset search <Icon name="x" size={13} /></button> : null}</div>
 
-          {loading ? <LoadingGrid /> : visibleEvents.length ? <div className={`event-grid ${viewMode === "list" ? "event-grid-list" : ""}`}>{visibleEvents.map((event, index) => <EventCard key={String(event.id)} event={event} saved={savedIds.has(String(event.id))} compared={compareIds.includes(String(event.id))} featured={viewMode === "grid" && (event === featuredEvent || (index === 0 && visibleEvents.length > 2))} list={viewMode === "list"} onOpen={() => setSelectedEventId(String(event.id))} onSave={() => toggleSaved(event)} onCompare={() => toggleCompared(event)} />)}</div> : <div className="empty-state"><div className="empty-illustration"><Icon name="search" size={28} /></div><h3>{activeView === "saved" ? "Your shortlist is waiting" : "No events match that yet"}</h3><p>{activeView === "saved" ? "Save an event while you explore and it will show up here." : "Try a broader search or clear a filter. There are plenty more campus moments to discover."}</p><button type="button" className="secondary-action" onClick={() => { setQuery(""); setActiveCategory("All events"); setFilters({ format: "Any format", price: "Any price", date: "Any day" }); setActiveView("discover"); }}>Show all events <Icon name="arrow-right" size={16} /></button></div>}
+          {loading ? <LoadingGrid /> : visibleEvents.length ? <div className={`event-grid ${viewMode === "list" ? "event-grid-list" : ""}`}>{visibleEvents.map((event, index) => <EventCard key={String(event.id)} event={event} saved={savedIds.has(String(event.id))} compared={compareIds.includes(String(event.id))} featured={viewMode === "grid" && (event === featuredEvent || (index === 0 && visibleEvents.length > 2))} list={viewMode === "list"} onOpen={() => openEvent(event)} onSave={() => toggleSaved(event)} onCompare={() => toggleCompared(event)} />)}</div> : <div className="empty-state"><div className="empty-illustration"><Icon name="search" size={28} /></div><h3>{activeView === "saved" ? "Your shortlist is waiting" : activeView === "rsvps" ? "Your plan is still open" : "No events match that yet"}</h3><p>{activeView === "saved" ? "Save an event while you explore and it will show up here." : activeView === "rsvps" ? "Register for an event and it will appear here with calendar-ready details." : "Nothing matches that combination yet. Try removing one filter or explore what is happening this week."}</p><button type="button" className="secondary-action" onClick={resetDiscovery}>{activeView === "rsvps" ? "Explore events" : "Show all events"} <Icon name="arrow-right" size={16} /></button></div>}
         </section>
 
         <section className="bottom-callout"><div className="callout-mark"><Icon name="star" size={20} /></div><div><p className="section-kicker">AFTER THE EVENT</p><h2>Good choices get better with your perspective.</h2><p>Reviews help your campus community find the events that live up to the promise.</p></div><button type="button" className="secondary-action" onClick={() => { const pastEvent = catalog.find(isPast); if (pastEvent) openReview(pastEvent); else showToast("Reviews unlock after an event ends"); }}>Share a review <Icon name="arrow-right" size={16} /></button></section>
       </div>
+
+      <nav className="bottom-navigation" aria-label="Mobile navigation">
+        <button type="button" className={activeView === "discover" ? "active" : ""} onClick={() => navigateTo("discover")}><Icon name="sparkle" size={18} /><span>For You</span></button>
+        <button type="button" className={activeView === "explore" ? "active" : ""} onClick={() => navigateTo("explore")}><Icon name="search" size={18} /><span>Explore</span></button>
+        <button type="button" className={activeView === "saved" ? "active" : ""} onClick={() => navigateTo("saved")}><span className="bottom-nav-icon-wrap"><Icon name="bookmark" size={18} />{savedCount ? <b>{savedCount}</b> : null}</span><span>Saved</span></button>
+        <button type="button" className={activeView === "rsvps" ? "active" : ""} onClick={() => navigateTo("rsvps")}><span className="bottom-nav-icon-wrap"><Icon name="calendar" size={18} />{registeredCount ? <b>{registeredCount}</b> : null}</span><span>My RSVPs</span></button>
+        <button type="button" onClick={() => setPreferencesOpen(true)}><Icon name="user" size={18} /><span>Profile</span></button>
+      </nav>
 
       {compareIds.length ? <div className="compare-tray"><div className="compare-tray-copy"><span className="tray-icon"><Icon name="compare" size={17} /></span><div><strong>{compareIds.length} event{compareIds.length === 1 ? "" : "s"} selected</strong><span>{compareIds.length < 2 ? "Add one more to compare side by side" : "Ready for a closer look"}</span></div></div><div className="compare-tray-events">{comparedEvents.map((event) => <span key={String(event.id)}>{asText(event.title)}<button type="button" aria-label={`Remove ${asText(event.title)} from comparison`} onClick={() => toggleCompared(event)}><Icon name="x" size={12} /></button></span>)}</div><button type="button" className="compare-open-button" disabled={compareIds.length < 2} onClick={() => setCompareOpen(true)}>Compare now <Icon name="arrow-right" size={16} /></button></div> : null}
 
